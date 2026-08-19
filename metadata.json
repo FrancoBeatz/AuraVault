@@ -1,6 +1,6 @@
 {
-  "name": "AuraTrace",
-  "description": "Enterprise-grade Visual Identity & Public Presence Discovery Platform with client-side vectorization, end-to-end encryption, and rigorous privacy transparency controls.",
+  "name": "AuraTrace Mobile",
+  "description": "Zero-knowledge visual identity & public presence discovery mobile application styled with the MOROJIWO boutique dark aesthetic.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

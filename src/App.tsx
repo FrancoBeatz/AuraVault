@@ -1,309 +1,385 @@
 import React, { useState } from 'react';
-import { Header } from './components/Header';
-import { ImageIngestion } from './components/ImageIngestion';
-import { SearchParameters } from './components/SearchParameters';
-import { ScanProgress } from './components/ScanProgress';
-import { ResultsFeed } from './components/ResultsFeed';
-import { EntityDetailModal } from './components/EntityDetailModal';
+import { OnboardingScreen } from './components/OnboardingScreen';
+import { MenuScreen } from './components/MenuScreen';
+import { DeepNodeInspectorModal } from './components/DeepNodeInspectorModal';
+import { InvestigationDossierDrawer } from './components/InvestigationDossierDrawer';
 import { OptOutModal } from './components/OptOutModal';
 import { TransparencyLedgerModal } from './components/TransparencyLedgerModal';
-import { AuditReportModal } from './components/AuditReportModal';
-import { ArchitectureModal } from './components/ArchitectureModal';
+import { FilterModal } from './components/FilterModal';
+import { EnclaveNodeModal } from './components/EnclaveNodeModal';
+import { FavoritesView } from './components/FavoritesView';
+import { ProfileView } from './components/ProfileView';
 import {
-  FacialBiometrics,
-  PublicProfileResult,
-  SearchFilterState,
-  ScanStage,
-  TransparencyLogEntry,
+  DiscoveredEntity,
+  InvestigationDossierItem,
+  EnclaveNode,
+  FilterState,
+  AuditLogEntry,
 } from './types';
-import { MOCK_DATABASE_PROFILES, INITIAL_TRANSPARENCY_LOGS } from './data/sampleProfiles';
-import { generateSha256 } from './utils/cryptoUtils';
+import { DISCOVERED_ENTITIES, ENCLAVE_NODES, INITIAL_AUDIT_LOGS } from './data/auraTraceData';
+import { ShieldCheck, Smartphone, Layers, FileText, ArrowLeft, Lock } from 'lucide-react';
 
 export default function App() {
-  // Image & Biometrics state
-  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
-  const [biometrics, setBiometrics] = useState<FacialBiometrics | null>(null);
-  const [presetTargetId, setPresetTargetId] = useState<string | null>(null);
+  // Navigation & View Mode
+  const [viewMode, setViewMode] = useState<'showcase' | 'interactive'>('showcase');
+  const [activeScreen, setActiveScreen] = useState<'onboarding' | 'feed'>('onboarding');
+  const [activeTab, setActiveTab] = useState<'feed' | 'favorites' | 'ledger' | 'profile'>('feed');
 
-  // Search Filters & Compliance State
-  const [filters, setFilters] = useState<SearchFilterState>({
-    targetPlatforms: {
-      linkedin: true,
-      twitter: true,
-      instagram: true,
-      facebook: true,
-      github: true,
-      youtube: false,
-      tiktok: false,
-      researchgate: true,
-      web: true,
+  // Selected Entity for Inspector Modal
+  const [selectedEntity, setSelectedEntity] = useState<DiscoveredEntity | null>(null);
+
+  // Investigation Dossier Items
+  const [dossierItems, setDossierItems] = useState<InvestigationDossierItem[]>([
+    {
+      id: 'dossier-elena-init',
+      entity: DISCOVERED_ENTITIES[0],
+      addedAt: '10:42 AM',
+      notes: 'High-confidence facial match on Oxford Internet Institute database.',
+      priority: 'High Review',
     },
-    similarityThreshold: 85,
-    maxResults: 12,
-    regionFilter: 'global',
-    includeAcademicAndNews: true,
-    requireHighConfidenceOnly: false,
-    legalPurpose: 'self_audit',
-    consentAgreed: true,
+  ]);
+  const [isDossierOpen, setIsDossierOpen] = useState(false);
+
+  // Sovereign Enclave Node State
+  const [selectedNode, setSelectedNode] = useState<EnclaveNode>(ENCLAVE_NODES[0]);
+  const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
+
+  // Discovery Filter State
+  const [filters, setFilters] = useState<FilterState>({
+    searchQuery: '',
+    platform: 'All Platforms',
+    minConfidence: 75,
+    regionEnclave: 'All',
+    verifiedOnly: false,
+    exposureFilter: 'All',
   });
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
-  // Discovery Execution State
-  const [scanStage, setScanStage] = useState<ScanStage>({
-    step: 'idle',
-    progress: 0,
-    detail: 'Awaiting input...',
-    elapsedMs: 0,
-  });
-  const [hasScanned, setHasScanned] = useState(false);
-  const [results, setResults] = useState<PublicProfileResult[]>([]);
-  const [scanDurationMs, setScanDurationMs] = useState(0);
+  // Transparency Audit Ledger
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
+  const [isLedgerModalOpen, setIsLedgerModalOpen] = useState(false);
 
-  // Modals & Inspection State
-  const [selectedProfileForModal, setSelectedProfileForModal] = useState<PublicProfileResult | null>(null);
-  const [isOptOutOpen, setIsOptOutOpen] = useState(false);
-  const [isLedgerOpen, setIsLedgerOpen] = useState(false);
-  const [isArchitectureOpen, setIsArchitectureOpen] = useState(false);
-  const [isAuditReportOpen, setIsAuditReportOpen] = useState(false);
+  // Opt-Out Right to be Forgotten Modal
+  const [isOptOutModalOpen, setIsOptOutModalOpen] = useState(false);
 
-  // Transparency Ledger
-  const [transparencyLogs, setTransparencyLogs] = useState<TransparencyLogEntry[]>(INITIAL_TRANSPARENCY_LOGS);
+  // Bookmarked Favorites
+  const [favoriteIds, setFavoriteIds] = useState<string[]>(['ent-elena-rostova', 'ent-maya-lin']);
 
-  // Image Selection Handler
-  const handleImageSelected = (url: string, bioData: FacialBiometrics, targetId?: string) => {
-    setSelectedImageUrl(url);
-    setBiometrics(bioData);
-    setPresetTargetId(targetId || null);
+  // Handlers
+  const handleToggleFavorite = (id: string) => {
+    setFavoriteIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
   };
 
-  const handleClearImage = () => {
-    setSelectedImageUrl(null);
-    setBiometrics(null);
-    setPresetTargetId(null);
-    setHasScanned(false);
-    setResults([]);
-    setScanStage({ step: 'idle', progress: 0, detail: 'Awaiting input...', elapsedMs: 0 });
-  };
-
-  // Execute Cryptographic Discovery Scan
-  const handleExecuteScan = async () => {
-    if (!selectedImageUrl || !filters.consentAgreed) return;
-
-    setHasScanned(false);
-    const startTime = performance.now();
-
-    // Stage 1: Vectorizing
-    setScanStage({
-      step: 'vectorizing',
-      progress: 25,
-      detail: 'Extracting 68-point landmarks & generating 512-dim embedding...',
-      elapsedMs: 80,
-    });
-
-    await new Promise((r) => setTimeout(r, 450));
-
-    // Stage 2: Querying Distributed Vector Index
-    setScanStage({
-      step: 'querying',
-      progress: 60,
-      detail: `Querying distributed cluster nodes with threshold ${filters.similarityThreshold}%...`,
-      elapsedMs: 240,
-    });
-
-    await new Promise((r) => setTimeout(r, 550));
-
-    // Stage 3: Synthesizing Graph Evidence
-    setScanStage({
-      step: 'synthesizing',
-      progress: 88,
-      detail: 'Resolving connected public profile handles & generating audit proof...',
-      elapsedMs: 420,
-    });
-
-    await new Promise((r) => setTimeout(r, 400));
-
-    // Finish
-    const endTime = performance.now();
-    const duration = Math.round(endTime - startTime);
-    setScanDurationMs(duration);
-
-    // Compute matched results
-    let matched: PublicProfileResult[] = [];
-    if (presetTargetId) {
-      // If a preset was picked, ensure the primary match is first with top score
-      const exactMatch = MOCK_DATABASE_PROFILES.find((p) => p.id === presetTargetId);
-      const others = MOCK_DATABASE_PROFILES.filter((p) => p.id !== presetTargetId);
-      matched = exactMatch ? [exactMatch, ...others] : MOCK_DATABASE_PROFILES;
-    } else {
-      matched = MOCK_DATABASE_PROFILES;
+  const handleAddToDossier = (entity: DiscoveredEntity) => {
+    if (dossierItems.some((it) => it.entity.id === entity.id)) {
+      setIsDossierOpen(true);
+      return;
     }
 
-    // Filter by similarity threshold
-    const filteredMatches = matched.filter((p) => p.confidenceScore >= filters.similarityThreshold - 10);
-
-    setResults(filteredMatches);
-    setHasScanned(true);
-
-    setScanStage({
-      step: 'completed',
-      progress: 100,
-      detail: `Synthesized ${filteredMatches.length} verified public identity candidates.`,
-      elapsedMs: duration,
-    });
-
-    // Add immutable entry to Transparency Ledger
-    const verificationHash = await generateSha256(`QUERY:${Date.now()}:${biometrics?.perceptualHash}`);
-    const newLog: TransparencyLogEntry = {
-      id: `LOG-${Math.floor(10000 + Math.random() * 90000)}-Q`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC',
-      action: 'QUERY_EXECUTION',
-      operatorHash: '0x4E992A...B01F (Client Memory Node)',
-      verificationHash: `SHA256: ${verificationHash}`,
-      status: 'IMMUTABLE',
-      nodeCluster: filters.regionFilter === 'europe' ? 'EU-FRA-01' : 'GLOBAL-RING-03',
+    const newItem: InvestigationDossierItem = {
+      id: `dossier-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      entity,
+      addedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      notes: 'Added from live biometric discovery feed.',
+      priority: 'High Review',
     };
 
-    setTransparencyLogs((prev) => [newLog, ...prev]);
-  };
+    setDossierItems((prev) => [newItem, ...prev]);
 
-  // Register Opt-Out Exclusion
-  const handleRegisteredOptOut = (name: string, email: string, hash: string, reason: string) => {
-    const optLog: TransparencyLogEntry = {
-      id: `LOG-${Math.floor(10000 + Math.random() * 90000)}-OPT`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC',
-      action: 'OPT_OUT_REQUEST',
-      operatorHash: '0x992B1C...3384 (GDPR Cryptographic Enforcement)',
-      verificationHash: `SHA256: ${hash}`,
-      status: 'VERIFIED',
-      nodeCluster: 'GLOBAL-EXCLUSION-RING',
+    // Append to Transparency Audit Log
+    const newLog: AuditLogEntry = {
+      id: `LOG-${Math.floor(1000 + Math.random() * 9000)}`,
+      timestamp: 'Just now',
+      action: 'Dossier Export',
+      targetHash: entity.pHash,
+      zeroKnowledgeProof: `ZK-SNARK:0x${Math.random().toString(16).substring(2, 10)}`,
+      nodeRouted: selectedNode.name,
+      status: 'Committed',
     };
-    setTransparencyLogs((prev) => [optLog, ...prev]);
+    setAuditLogs((prev) => [newLog, ...prev]);
+    setIsDossierOpen(true);
   };
 
-  // Flag Profile for Takedown/Dispute
-  const handleFlagProfile = (profileId: string) => {
-    const flagLog: TransparencyLogEntry = {
-      id: `LOG-${Math.floor(10000 + Math.random() * 90000)}-TAKEDOWN`,
-      timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC',
-      action: 'TAKEDOWN_PROCESSED',
-      operatorHash: '0x10BC84...99FA (Trust & Safety Review)',
-      verificationHash: `SHA256: dispute_ticket_${profileId}`,
-      status: 'VERIFIED',
-      nodeCluster: 'GLOBAL-EXCLUSION-RING',
-    };
-    setTransparencyLogs((prev) => [flagLog, ...prev]);
+  const handleRemoveDossierItem = (id: string) => {
+    setDossierItems((prev) => prev.filter((it) => it.id !== id));
   };
 
-  const isScanning = scanStage.step !== 'idle' && scanStage.step !== 'completed' && scanStage.step !== 'error';
-  const canExecute = !!selectedImageUrl && filters.consentAgreed;
+  const handleInitializeScanFromOnboarding = (preset: DiscoveredEntity) => {
+    setSelectedEntity(preset);
+    setActiveScreen('feed');
+    if (viewMode === 'interactive') {
+      setActiveScreen('feed');
+    }
+  };
+
+  const favoriteEntities = DISCOVERED_ENTITIES.filter((item) => favoriteIds.includes(item.id));
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
-      {/* Header Bar */}
-      <Header
-        onOpenLedger={() => setIsLedgerOpen(true)}
-        onOpenOptOut={() => setIsOptOutOpen(true)}
-        onOpenArchitecture={() => setIsArchitectureOpen(true)}
-        onOpenAuditLogs={() => setIsAuditReportOpen(true)}
-      />
-
-      {/* Main Two-Column Layout */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: Ingestion & Search Parameters (5 cols) */}
-          <div className="lg:col-span-5 space-y-5">
-            <ImageIngestion
-              selectedImageUrl={selectedImageUrl}
-              onImageSelected={handleImageSelected}
-              onClearImage={handleClearImage}
-              isScanning={isScanning}
-            />
-
-            <SearchParameters
-              filters={filters}
-              onFilterChange={setFilters}
-              onExecuteScan={handleExecuteScan}
-              isScanning={isScanning}
-              canExecute={canExecute}
-            />
+    <div className="min-h-screen bg-[#141619] text-stone-100 flex flex-col font-sans selection:bg-[#007A4D] selection:text-white">
+      {/* Top Bar for Mode Switching & Branding */}
+      <header className="bg-[#0e1012] border-b border-white/10 px-4 py-3 sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-8 w-8 rounded-full bg-[#007A4D] flex items-center justify-center text-white shadow-md">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-base tracking-tight text-white uppercase">AURATRACE</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
+                  MOROJIWO MOBILE SYSTEM
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-400">Zero-Knowledge Visual Identity & Public Presence Discovery</p>
+            </div>
           </div>
 
-          {/* Right Column: Execution Progress & Results Feed (7 cols) */}
-          <div className="lg:col-span-7 space-y-5">
-            {isScanning && <ScanProgress stage={scanStage} />}
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-[#181b1f] p-1 rounded-full border border-white/10 text-xs">
+              <button
+                id="btn-mode-showcase"
+                onClick={() => setViewMode('showcase')}
+                className={`px-3 py-1 rounded-full transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'showcase'
+                    ? 'bg-[#007A4D] text-white font-semibold shadow-sm'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span>Design Showcase (Dual Screen)</span>
+              </button>
 
-            <ResultsFeed
-              results={results}
-              hasScanned={hasScanned}
-              onSelectProfile={(profile) => setSelectedProfileForModal(profile)}
-              onExportAuditReport={() => setIsAuditReportOpen(true)}
-              scanDurationMs={scanDurationMs}
-              perceptualHash={biometrics?.perceptualHash || '0x811C9DC5'}
-            />
+              <button
+                id="btn-mode-interactive"
+                onClick={() => setViewMode('interactive')}
+                className={`px-3 py-1 rounded-full transition-all flex items-center gap-1.5 cursor-pointer ${
+                  viewMode === 'interactive'
+                    ? 'bg-[#007A4D] text-white font-semibold shadow-sm'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                <span>Single Mobile Simulator</span>
+              </button>
+            </div>
+
+            {/* Quick Dossier Pill */}
+            <button
+              id="btn-top-dossier"
+              onClick={() => setIsDossierOpen(true)}
+              className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-stone-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileText className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Dossier ({dossierItems.length})</span>
+            </button>
           </div>
         </div>
+      </header>
+
+      {/* Main Showcase / Simulator Arena */}
+      <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 relative overflow-hidden">
+        {/* Ambient Emerald Circular Glow */}
+        <div className="absolute w-[600px] h-[600px] rounded-full bg-[#1b221e] blur-3xl opacity-30 pointer-events-none -z-10" />
+
+        {viewMode === 'showcase' ? (
+          /* Dual Screen Showcase View (Matching MOROJIWO Design Poster Style) */
+          <div className="w-full max-w-5xl flex flex-col items-center space-y-6">
+            <div className="text-center space-y-1">
+              <span className="text-xs font-mono uppercase tracking-widest text-emerald-400 font-bold">
+                AURATRACE • MOROJIWO DESIGN ARCHITECTURE
+              </span>
+              <p className="text-xs text-stone-400">
+                Zero-knowledge biometric landmark mesh, deep dark obsidian canvas, and 1-tap identity intelligence inspection
+              </p>
+            </div>
+
+            {/* Dual Device Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl justify-items-center">
+              {/* Screen 1: Ingestion & Biometric Landmark Mesh Screen */}
+              <div className="w-full max-w-[360px] transform hover:-translate-y-1 transition-transform duration-300">
+                <div className="text-center pb-2 text-xs font-mono text-stone-400 font-semibold">
+                  SCREEN 1: BIOMETRIC ONBOARDING & SCANNER
+                </div>
+                <OnboardingScreen
+                  onInitializeScan={(preset) => {
+                    setViewMode('interactive');
+                    setActiveScreen('feed');
+                    setSelectedEntity(preset);
+                  }}
+                />
+              </div>
+
+              {/* Screen 2: Discovery Feed & Identity Intelligence Screen */}
+              <div className="w-full max-w-[360px] transform hover:-translate-y-1 transition-transform duration-300">
+                <div className="text-center pb-2 text-xs font-mono text-emerald-400 font-semibold">
+                  SCREEN 2: IDENTITY DISCOVERY FEED
+                </div>
+                <MenuScreen
+                  onSelectEntity={(entity) => setSelectedEntity(entity)}
+                  onQuickAdd={handleAddToDossier}
+                  dossierCount={dossierItems.length}
+                  onOpenDossier={() => setIsDossierOpen(true)}
+                  selectedNode={selectedNode}
+                  onOpenNodeModal={() => setIsNodeModalOpen(true)}
+                  onOpenFilterModal={() => setIsFilterModalOpen(true)}
+                  onOpenLedgerModal={() => setIsLedgerModalOpen(true)}
+                  onOpenOptOutModal={() => setIsOptOutModalOpen(true)}
+                  filters={filters}
+                  onUpdateFilters={setFilters}
+                  activeTab={activeTab}
+                  onChangeTab={setActiveTab}
+                  favoriteIds={favoriteIds}
+                  onToggleFavorite={handleToggleFavorite}
+                  onOpenOnboarding={() => setActiveScreen('onboarding')}
+                />
+              </div>
+            </div>
+
+            {/* Signature Tag matching the design asset */}
+            <div className="text-center pt-2">
+              <span className="text-sm font-bold text-stone-400 tracking-wider">@rchmwnn</span>
+            </div>
+          </div>
+        ) : (
+          /* Single Interactive Mobile Simulator */
+          <div className="w-full max-w-[380px] flex flex-col items-center space-y-3">
+            <div className="flex items-center justify-between w-full px-2 text-xs font-mono text-stone-400">
+              <button
+                onClick={() => setActiveScreen(activeScreen === 'onboarding' ? 'feed' : 'onboarding')}
+                className="hover:text-emerald-400 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                <span>Switch to {activeScreen === 'onboarding' ? 'Discovery Feed' : 'Scanner'}</span>
+              </button>
+              <span className="text-emerald-400">iPhone 16 Pro View</span>
+            </div>
+
+            <div className="w-full shadow-2xl rounded-[38px] p-1 bg-gradient-to-b from-stone-700/40 via-stone-800/20 to-black">
+              {activeScreen === 'onboarding' ? (
+                <OnboardingScreen onInitializeScan={handleInitializeScanFromOnboarding} />
+              ) : activeTab === 'favorites' ? (
+                <div className="relative w-full h-full min-h-[720px] max-h-[880px] rounded-[36px] overflow-hidden bg-[#0c0e11] text-white flex flex-col justify-between shadow-2xl border border-white/10 p-5">
+                  <FavoritesView
+                    favoriteEntities={favoriteEntities}
+                    onSelectEntity={(entity) => setSelectedEntity(entity)}
+                    onQuickAdd={handleAddToDossier}
+                  />
+
+                  {/* Docked Nav Bar */}
+                  <div className="pt-4">
+                    <div className="bg-[#121417]/95 backdrop-blur-md border border-white/15 rounded-full px-6 py-2.5 shadow-2xl flex items-center justify-around">
+                      <button onClick={() => setActiveTab('feed')} className="p-1.5 text-stone-500 hover:text-stone-300">
+                        <Smartphone className="h-5 w-5" />
+                      </button>
+                      <button onClick={() => setActiveTab('favorites')} className="p-1.5 text-emerald-400">
+                        <ShieldCheck className="h-5 w-5" />
+                      </button>
+                      <button onClick={() => setActiveTab('profile')} className="p-1.5 text-stone-500 hover:text-stone-300">
+                        <Lock className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : activeTab === 'profile' ? (
+                <div className="relative w-full h-full min-h-[720px] max-h-[880px] rounded-[36px] overflow-hidden bg-[#0c0e11] text-white flex flex-col justify-between shadow-2xl border border-white/10 p-5">
+                  <ProfileView
+                    selectedNode={selectedNode}
+                    onOpenLedger={() => setIsLedgerModalOpen(true)}
+                    onOpenOptOut={() => setIsOptOutModalOpen(true)}
+                    onOpenNodeModal={() => setIsNodeModalOpen(true)}
+                  />
+
+                  {/* Docked Nav Bar */}
+                  <div className="pt-4">
+                    <div className="bg-[#121417]/95 backdrop-blur-md border border-white/15 rounded-full px-6 py-2.5 shadow-2xl flex items-center justify-around">
+                      <button onClick={() => setActiveTab('feed')} className="p-1.5 text-stone-500 hover:text-stone-300">
+                        <Smartphone className="h-5 w-5" />
+                      </button>
+                      <button onClick={() => setActiveTab('favorites')} className="p-1.5 text-stone-500 hover:text-stone-300">
+                        <ShieldCheck className="h-5 w-5" />
+                      </button>
+                      <button onClick={() => setActiveTab('profile')} className="p-1.5 text-emerald-400">
+                        <Lock className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <MenuScreen
+                  onSelectEntity={(entity) => setSelectedEntity(entity)}
+                  onQuickAdd={handleAddToDossier}
+                  dossierCount={dossierItems.length}
+                  onOpenDossier={() => setIsDossierOpen(true)}
+                  selectedNode={selectedNode}
+                  onOpenNodeModal={() => setIsNodeModalOpen(true)}
+                  onOpenFilterModal={() => setIsFilterModalOpen(true)}
+                  onOpenLedgerModal={() => setIsLedgerModalOpen(true)}
+                  onOpenOptOutModal={() => setIsOptOutModalOpen(true)}
+                  filters={filters}
+                  onUpdateFilters={setFilters}
+                  activeTab={activeTab}
+                  onChangeTab={setActiveTab}
+                  favoriteIds={favoriteIds}
+                  onToggleFavorite={handleToggleFavorite}
+                  onOpenOnboarding={() => setActiveScreen('onboarding')}
+                />
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-800 bg-slate-900/60 py-4 px-4 text-xs font-mono text-slate-400">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-          <div>
-            <span className="text-slate-300 font-semibold">AuraTrace Platform</span> • ISO/IEC 27701 & RFC-9162 Zero-Knowledge Footprint Engine
-          </div>
-          <div className="flex items-center gap-4 text-[11px] text-slate-500">
-            <button
-              onClick={() => setIsArchitectureOpen(true)}
-              className="hover:text-blue-400 underline cursor-pointer"
-            >
-              Security Protocol
-            </button>
-            <button
-              onClick={() => setIsOptOutOpen(true)}
-              className="hover:text-amber-400 underline cursor-pointer"
-            >
-              Opt-Out Registry
-            </button>
-            <button
-              onClick={() => setIsLedgerOpen(true)}
-              className="hover:text-emerald-400 underline cursor-pointer"
-            >
-              Consensus Ledger
-            </button>
-          </div>
-        </div>
-      </footer>
-
-      {/* Interactive Modals */}
-      <EntityDetailModal
-        profile={selectedProfileForModal}
-        queryImageUrl={selectedImageUrl}
-        onClose={() => setSelectedProfileForModal(null)}
-        onFlagProfile={handleFlagProfile}
+      {/* Deep Node Inspector Modal */}
+      <DeepNodeInspectorModal
+        entity={selectedEntity}
+        isOpen={!!selectedEntity}
+        onClose={() => setSelectedEntity(null)}
+        onAddToDossier={handleAddToDossier}
+        isInDossier={selectedEntity ? dossierItems.some((it) => it.entity.id === selectedEntity.id) : false}
+        isFavorite={selectedEntity ? favoriteIds.includes(selectedEntity.id) : false}
+        onToggleFavorite={handleToggleFavorite}
       />
 
+      {/* Investigation Dossier Drawer */}
+      <InvestigationDossierDrawer
+        isOpen={isDossierOpen}
+        onClose={() => setIsDossierOpen(false)}
+        items={dossierItems}
+        onRemoveItem={handleRemoveDossierItem}
+        onClearDossier={() => setDossierItems([])}
+        selectedNode={selectedNode}
+      />
+
+      {/* Opt-Out Right to be Forgotten Modal */}
       <OptOutModal
-        isOpen={isOptOutOpen}
-        onClose={() => setIsOptOutOpen(false)}
-        onRegisteredOptOut={handleRegisteredOptOut}
+        isOpen={isOptOutModalOpen}
+        onClose={() => setIsOptOutModalOpen(false)}
       />
 
+      {/* Cryptographic Transparency Ledger Modal */}
       <TransparencyLedgerModal
-        isOpen={isLedgerOpen}
-        onClose={() => setIsLedgerOpen(false)}
-        logs={transparencyLogs}
+        isOpen={isLedgerModalOpen}
+        onClose={() => setIsLedgerModalOpen(false)}
+        logs={auditLogs}
       />
 
-      <AuditReportModal
-        isOpen={isAuditReportOpen}
-        onClose={() => setIsAuditReportOpen(false)}
-        results={results}
+      {/* Filter Modal */}
+      <FilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
         filters={filters}
-        perceptualHash={biometrics?.perceptualHash || '0x811C9DC5'}
-        scanDurationMs={scanDurationMs}
+        onUpdateFilters={setFilters}
       />
 
-      <ArchitectureModal
-        isOpen={isArchitectureOpen}
-        onClose={() => setIsArchitectureOpen(false)}
+      {/* Sovereign Enclave Node Modal */}
+      <EnclaveNodeModal
+        isOpen={isNodeModalOpen}
+        onClose={() => setIsNodeModalOpen(false)}
+        selectedNode={selectedNode}
+        onSelectNode={setSelectedNode}
       />
     </div>
   );
