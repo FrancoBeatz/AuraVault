@@ -106,6 +106,12 @@ export const InvestigationDossierDrawer: React.FC<InvestigationDossierDrawerProp
           </div>
         </div>
 
+        {/* Short Tip */}
+        <div className="px-5 py-1.5 bg-emerald-950/20 text-[10px] text-emerald-300 font-mono flex items-center gap-1.5">
+          <span>💡</span>
+          <span>Tip: Tap "Download Audit Dossier" to save your report file</span>
+        </div>
+
         {/* Items List */}
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {items.length === 0 ? (

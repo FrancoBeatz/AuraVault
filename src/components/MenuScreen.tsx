@@ -181,7 +181,15 @@ export const MenuScreen: React.FC<MenuScreenProps> = ({
           <h1 className="text-xl font-bold tracking-tight text-white font-sans">
             Good Morning <span className="text-white">rchmwnn</span>
           </h1>
-          <p className="text-xs text-stone-400">1.4B Indexed Vectors • Zero Raw Image Storage</p>
+          <p className="text-xs text-stone-400">1.4B Public Profiles Checked • Safe & Private</p>
+        </div>
+
+        {/* Short Tip Banner */}
+        <div className="px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-800/50 flex items-center justify-between text-[11px] text-emerald-300">
+          <span className="flex items-center gap-1.5">
+            <Lock className="h-3 w-3 text-emerald-400 shrink-0" />
+            <span><strong>Tip:</strong> Tap <strong>+</strong> to add any match to your report dossier</span>
+          </span>
         </div>
 
         {/* Search & Filter Row */}

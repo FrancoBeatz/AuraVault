@@ -167,10 +167,16 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onInitialize
           <button
             onClick={() => fileInputRef.current?.click()}
             className="h-6 w-6 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center border border-white/15 cursor-pointer text-[10px]"
-            title="Upload custom query image"
+            title="Upload custom photo"
           >
             <Upload className="h-3 w-3 text-emerald-300" />
           </button>
+        </div>
+
+        {/* Short Quick Tip */}
+        <div className="mt-2 text-[10px] text-emerald-400 font-mono flex items-center justify-center gap-1">
+          <Sparkles className="h-3 w-3" />
+          <span>Tip: Tap any face name or upload your own photo</span>
         </div>
       </div>
 

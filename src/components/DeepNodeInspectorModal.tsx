@@ -109,7 +109,10 @@ export const DeepNodeInspectorModal: React.FC<DeepNodeInspectorModalProps> = ({
 
           {/* Discovered Public Outbound Links */}
           <div className="space-y-2">
-            <span className="font-semibold text-stone-300 block text-xs">Discovered Public Outbound Links</span>
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-stone-300 block text-xs">Public Social Profiles Found</span>
+              <span className="text-[10px] text-emerald-400 font-mono">💡 Tip: Tap to visit link</span>
+            </div>
             <div className="space-y-1.5">
               {entity.publicLinks.map((link, idx) => (
                 <a
